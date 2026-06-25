@@ -1,11 +1,13 @@
-const KEY = process.env.PARTSAPI_KEY;
+const KEY_VINDECODE    = process.env.PARTSAPI_KEY_VINDECODE;
+const KEY_VINDECODEOE  = process.env.PARTSAPI_KEY_VINDECODEOE;
+const KEY_CROSSES      = process.env.PARTSAPI_KEY_CROSSES;
 const BASE = 'https://partsapi.ru/api/';
 
-async function callApi(params) {
+async function callApi(key, params) {
   const res = await fetch(BASE, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ key: KEY, lang: 'ru', ...params }).toString(),
+    body: new URLSearchParams({ key, lang: 'ru', ...params }).toString(),
   });
   const text = await res.text();
   try { return JSON.parse(text); } catch { return { _raw: text }; }
@@ -26,8 +28,8 @@ export default async function handler(req, res) {
 
   // Шаги 1 + 2 параллельно
   const [step1, step2] = await Promise.all([
-    callApi({ method: 'VINdecode', vin: vinUpper }),
-    callApi({ method: 'VINdecodeOE', vin: vinUpper }),
+    callApi(KEY_VINDECODE,   { method: 'VINdecode',    vin: vinUpper }),
+    callApi(KEY_VINDECODEOE, { method: 'VINdecodeOE',  vin: vinUpper }),
   ]);
 
   // Пробуем вытащить OEM из ответа шага 2 для шага 3
@@ -43,17 +45,17 @@ export default async function handler(req, res) {
 
     oemFound = items
       .map(item => ({
-        oem: item.oem ?? item.article ?? item.number ?? item.partNumber ?? null,
-        brand: item.brand ?? item.manufacturer ?? item.mfr ?? null,
-        name: item.name ?? item.partName ?? item.description ?? null,
+        oem:   item.oem   ?? item.article    ?? item.number      ?? item.partNumber ?? null,
+        brand: item.brand ?? item.manufacturer ?? item.mfr       ?? null,
+        name:  item.name  ?? item.partName   ?? item.description ?? null,
       }))
       .filter(i => i.oem);
 
     if (oemFound.length > 0) {
       oemUsedForStep3 = oemFound[0].oem;
-      step3 = await callApi({
+      step3 = await callApi(KEY_CROSSES, {
         method: 'getCrossesTitle',
-        oem: oemUsedForStep3,
+        oem:   oemUsedForStep3,
         brand: oemFound[0].brand ?? '',
       });
     }
@@ -63,11 +65,11 @@ export default async function handler(req, res) {
 
   return res.status(200).json({
     vin: vinUpper,
-    step1_vindecode: step1,
-    step2_vindecodeOE: step2,
-    step3_crosses: step3,
+    step1_vindecode:    step1,
+    step2_vindecodeOE:  step2,
+    step3_crosses:      step3,
     debug: {
-      carName: step1?.name ?? step1?.car ?? step1?.result ?? null,
+      carName:          step1?.name ?? step1?.car ?? step1?.result ?? null,
       oemFound,
       oemUsedForStep3,
     },
